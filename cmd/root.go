@@ -27,10 +27,15 @@ var errNoConfig = errors.New("no config")
 
 var rootCmd = &cobra.Command{
 	Use:     "chore [task]",
-	Short:   "A task runner for repetitive daily chores",
+	Short:   "Task runner for repetitive daily chores",
 	Version: buildinfo.Version,
-	Args:    cobra.ExactArgs(1),
-	RunE:    runTask,
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		if len(args) == 0 {
+			return cmd.Help()
+		}
+		return runTask(cmd, args)
+	},
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
@@ -56,6 +61,7 @@ Flags:
 {{.Flags.FlagUsages | trimTrailingWhitespaces}}{{end}}
 `
 	rootCmd.SetHelpTemplate(helpTmpl)
+	rootCmd.SetVersionTemplate(versionLine + "\n")
 	rootCmd.CompletionOptions.HiddenDefaultCmd = true
 }
 
