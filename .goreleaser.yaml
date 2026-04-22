@@ -16,4 +16,19 @@ archives:
   - formats: [tar.gz]
 
 changelog:
-  use: github-native
+  use: github
+  sort: asc
+  abbrev: -1
+  filters:
+    exclude:
+      - "^docs:"
+      - "^ci:"
+  groups:
+    - title: Features
+      regexp: '^.*?feat'
+      order: 0
+    - title: Bug fixes
+      regexp: '^.*?fix'
+      order: 1
+    - title: Others
+      order: 999
