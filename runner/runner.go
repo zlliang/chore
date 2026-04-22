@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/creack/pty"
 	"github.com/zlliang/chore/config"
 )
 
@@ -127,29 +128,24 @@ func (r *Runner) newCommand(ctx context.Context, cmdStr string) *exec.Cmd {
 }
 
 func (r *Runner) execInteractive(ctx context.Context, taskName, cmdStr string) error {
-	cmd := r.newCommand(ctx, cmdStr)
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return fmt.Errorf("stdin pipe: %w", err)
+	cmd := exec.CommandContext(ctx, r.plan.Shell[0], r.shellArgs(cmdStr)...)
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 	}
+	cmd.WaitDelay = 3 * time.Second
 
-	stdout, err := cmd.StdoutPipe()
+	ptmx, err := pty.Start(cmd)
 	if err != nil {
-		return fmt.Errorf("stdout pipe: %w", err)
-	}
-	cmd.Stderr = cmd.Stdout
-
-	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("start: %w", err)
 	}
+	defer ptmx.Close()
 
 	r.emit(EventTaskInteractive{
 		Task:  taskName,
-		Stdin: stdin,
+		Stdin: ptmx,
 	})
 
-	r.streamOutputInteractive(taskName, stdout)
+	r.streamOutputInteractive(taskName, ptmx)
 
 	if err := cmd.Wait(); err != nil {
 		return err
@@ -174,10 +170,10 @@ func (r *Runner) streamOutputInteractive(taskName string, reader io.Reader) {
 			lines := strings.Split(data, "\n")
 			partial = lines[len(lines)-1]
 			for _, line := range lines[:len(lines)-1] {
-				r.emit(EventTaskOutput{Task: taskName, Text: line})
+				r.emit(EventTaskOutput{Task: taskName, Text: strings.TrimRight(line, "\r")})
 			}
 			if partial != "" {
-				r.emit(EventTaskOutput{Task: taskName, Text: partial})
+				r.emit(EventTaskOutput{Task: taskName, Text: strings.TrimRight(partial, "\r")})
 				partialEmitted = true
 			}
 		}
@@ -191,19 +187,19 @@ func (r *Runner) streamOutputInteractive(taskName string, reader io.Reader) {
 }
 
 func (r *Runner) execCommand(ctx context.Context, taskName, cmdStr string) error {
-	cmd := r.newCommand(ctx, cmdStr)
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("stdout pipe: %w", err)
+	cmd := exec.CommandContext(ctx, r.plan.Shell[0], r.shellArgs(cmdStr)...)
+	cmd.Cancel = func() error {
+		return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
 	}
-	cmd.Stderr = cmd.Stdout
+	cmd.WaitDelay = 3 * time.Second
 
-	if err := cmd.Start(); err != nil {
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
 		return fmt.Errorf("start: %w", err)
 	}
+	defer ptmx.Close()
 
-	r.streamOutput(taskName, stdout)
+	r.streamOutput(taskName, ptmx)
 
 	if err := cmd.Wait(); err != nil {
 		return err
@@ -215,6 +211,7 @@ func (r *Runner) streamOutput(taskName string, reader io.Reader) {
 	scanner := bufio.NewScanner(reader)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 	for scanner.Scan() {
-		r.emit(EventTaskOutput{Task: taskName, Text: scanner.Text()})
+		line := strings.TrimRight(scanner.Text(), "\r")
+		r.emit(EventTaskOutput{Task: taskName, Text: line})
 	}
 }

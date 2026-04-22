@@ -1,21 +1,32 @@
+# Color preservation example.
+#
+# Commands run in a pseudo-terminal, so tools that auto-detect color
+# (ls, grep, git, etc.) emit ANSI colors without --color=always.
+
 [[tasks]]
 name = "colorful"
 description = "Commands with colorized output"
-steps = ["ansi-colors", "ls-colors", "grep-colors"]
+steps = ["ansi-colors", "ls-colors", "grep-colors", "git-colors"]
 
 [[tasks]]
 name = "ansi-colors"
-description = "ANSI color output"
+description = "ANSI color codes"
 run = [
   "printf '\\033[31mRed\\033[0m \\033[32mGreen\\033[0m \\033[33mYellow\\033[0m \\033[34mBlue\\033[0m \\033[35mMagenta\\033[0m \\033[36mCyan\\033[0m\\n'",
 ]
 
 [[tasks]]
 name = "ls-colors"
-description = "Colorized ls output"
+description = "Colorized ls (auto-detected)"
 run = ["ls -G /tmp"]
 
 [[tasks]]
 name = "grep-colors"
-description = "Colorized grep output"
-run = ["echo 'hello world\nfoo bar\nhello again' | grep --color=always hello"]
+description = "Colorized grep (auto-detected)"
+run = ["echo 'hello world\nfoo bar\nhello again' | grep --color=auto hello"]
+
+[[tasks]]
+name = "git-colors"
+description = "Colorized git status (auto-detected)"
+check = "git"
+run = ["git -C /tmp status --short 2>/dev/null || echo '(not a git repo)'"]

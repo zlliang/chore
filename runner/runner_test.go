@@ -3,6 +3,7 @@ package runner
 import (
 	"context"
 	"fmt"
+	"strings"
 	"syscall"
 	"testing"
 	"time"
@@ -212,6 +213,90 @@ func TestNewCommand(t *testing.T) {
 	}
 
 	_ = syscall.SIGTERM // ensure syscall import is used
+}
+
+func TestCommandPreservesANSIColors(t *testing.T) {
+	// printf outputs ANSI escape codes; the PTY should preserve them.
+	plan := makePlan(config.Task{
+		Name: "colors",
+		Run:  []string{`printf '\033[31mred\033[0m\n'`},
+	})
+	r := New(plan)
+
+	go r.Run(context.Background())
+	events := drainEvents(r.Events())
+
+	var output string
+	for _, e := range events {
+		if o, ok := e.(EventTaskOutput); ok {
+			output = o.Text
+		}
+	}
+	if !strings.Contains(output, "\033[31m") {
+		t.Errorf("expected ANSI escape codes in output, got %q", output)
+	}
+}
+
+func TestCommandOutputNoTrailingCR(t *testing.T) {
+	// PTY produces \r\n line endings; trailing \r should be stripped.
+	plan := makePlan(config.Task{
+		Name: "crlf",
+		Run:  []string{"echo hello"},
+	})
+	r := New(plan)
+
+	go r.Run(context.Background())
+	events := drainEvents(r.Events())
+
+	for _, e := range events {
+		if o, ok := e.(EventTaskOutput); ok {
+			if strings.HasSuffix(o.Text, "\r") {
+				t.Errorf("output has trailing \\r: %q", o.Text)
+			}
+		}
+	}
+}
+
+func TestInteractivePreservesANSIColors(t *testing.T) {
+	plan := makePlan(config.Task{
+		Name:        "icolors",
+		Interactive: true,
+		Run:         []string{`printf '\033[32mgreen\033[0m\n'`},
+	})
+	r := New(plan)
+
+	go r.Run(context.Background())
+	events := drainEvents(r.Events())
+
+	var output string
+	for _, e := range events {
+		if o, ok := e.(EventTaskOutput); ok {
+			output = o.Text
+		}
+	}
+	if !strings.Contains(output, "\033[32m") {
+		t.Errorf("expected ANSI escape codes in interactive output, got %q", output)
+	}
+}
+
+func TestInteractiveOutputNoTrailingCR(t *testing.T) {
+	plan := makePlan(config.Task{
+		Name:        "icrlf",
+		Interactive: true,
+		Run:         []string{"echo hello"},
+	})
+	r := New(plan)
+
+	go r.Run(context.Background())
+	events := drainEvents(r.Events())
+
+	for _, e := range events {
+		if o, ok := e.(EventTaskOutput); ok {
+			if strings.HasSuffix(o.Text, "\r") {
+				t.Errorf("interactive output has trailing \\r: %q", o.Text)
+			}
+		}
+	}
 }
 
 // summarize converts events into compact strings for easy comparison.
