@@ -19,6 +19,7 @@ changelog:
   use: github
   sort: asc
   abbrev: -1
+  format: "{{.Message}}"
   filters:
     exclude:
       - "^docs:"
