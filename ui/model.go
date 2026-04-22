@@ -2,7 +2,7 @@ package ui
 
 import (
 	"fmt"
-	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -45,9 +45,8 @@ type Model struct {
 	done     bool
 	quitting bool
 
-	inputWriter io.WriteCloser
-	inputTask   string
-	inputBuf    string
+	inputPTY  *os.File
+	inputTask string
 
 	// Summary counts.
 	completed int
@@ -98,35 +97,11 @@ func (m Model) Init() tea.Cmd {
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if m.inputWriter != nil {
-			switch msg.Type {
-			case tea.KeyCtrlC:
-				m.inputWriter.Close()
-				m.inputWriter = nil
-				m.inputTask = ""
-				m.inputBuf = ""
-				return m, nil
-			case tea.KeyEnter:
-				m.inputWriter.Write([]byte(m.inputBuf + "\n"))
-				ts := m.findTask(m.inputTask)
-				if ts != nil && len(ts.output) > 0 {
-					ts.output[len(ts.output)-1] += m.inputBuf
-				}
-				m.inputBuf = ""
-				return m, nil
-			case tea.KeyBackspace:
-				if len(m.inputBuf) > 0 {
-					m.inputBuf = m.inputBuf[:len(m.inputBuf)-1]
-				}
-				return m, nil
-			default:
-				if msg.Type == tea.KeyRunes {
-					m.inputBuf += string(msg.Runes)
-				} else if msg.Type == tea.KeySpace {
-					m.inputBuf += " "
-				}
-				return m, nil
+		if m.inputPTY != nil {
+			if b, ok := encodeKey(msg); ok {
+				m.inputPTY.Write(b)
 			}
+			return m, nil
 		}
 
 		if msg.String() == "ctrl+c" || msg.String() == "q" {
@@ -164,13 +139,16 @@ func (m *Model) handleEvent(event runner.Event) {
 		if ts := m.findTask(e.Task); ts != nil {
 			ts.status = statusRunning
 		}
-		m.inputWriter = e.Stdin
+		m.inputPTY = e.PTY
 		m.inputTask = e.Task
-		m.inputBuf = ""
 
 	case runner.EventTaskOutput:
 		if ts := m.findTask(e.Task); ts != nil {
-			ts.output = append(ts.output, e.Text)
+			if e.Replace && len(ts.output) > 0 {
+				ts.output[len(ts.output)-1] = e.Text
+			} else {
+				ts.output = append(ts.output, e.Text)
+			}
 			if len(ts.output) > maxOutputLines {
 				ts.output = ts.output[len(ts.output)-maxOutputLines:]
 			}
@@ -184,10 +162,9 @@ func (m *Model) handleEvent(event runner.Event) {
 			m.completed++
 			m.total += e.Duration
 		}
-		if m.inputWriter != nil && m.inputTask == e.Task {
-			m.inputWriter = nil
+		if m.inputPTY != nil && m.inputTask == e.Task {
+			m.inputPTY = nil
 			m.inputTask = ""
-			m.inputBuf = ""
 		}
 
 	case runner.EventTaskFailed:
@@ -200,10 +177,9 @@ func (m *Model) handleEvent(event runner.Event) {
 			m.failed++
 			m.total += e.Duration
 		}
-		if m.inputWriter != nil && m.inputTask == e.Task {
-			m.inputWriter = nil
+		if m.inputPTY != nil && m.inputTask == e.Task {
+			m.inputPTY = nil
 			m.inputTask = ""
-			m.inputBuf = ""
 		}
 
 	case runner.EventTaskSkipped:
@@ -292,7 +268,7 @@ func (m Model) renderTask(t *taskState) string {
 		for i, line := range t.output {
 			display := line
 			if i == len(t.output)-1 && t.name == m.inputTask {
-				display = line + m.inputBuf + m.cursor()
+				display = line + m.cursor()
 			}
 			if i == 0 {
 				fmt.Fprintf(&b, "  └ %s\n", display)
@@ -339,6 +315,46 @@ func (m Model) renderSummary() string {
 
 func (m Model) cursor() string {
 	return "█"
+}
+
+// encodeKey translates a bubbletea key message into terminal bytes.
+func encodeKey(msg tea.KeyMsg) ([]byte, bool) {
+	switch msg.Type {
+	case tea.KeyRunes:
+		return []byte(string(msg.Runes)), true
+	case tea.KeySpace:
+		return []byte(" "), true
+	case tea.KeyEnter:
+		return []byte{'\r'}, true
+	case tea.KeyTab:
+		return []byte{'\t'}, true
+	case tea.KeyEscape:
+		return []byte{0x1b}, true
+	case tea.KeyBackspace:
+		return []byte{0x7f}, true
+	case tea.KeyCtrlC:
+		return []byte{0x03}, true
+	case tea.KeyCtrlD:
+		return []byte{0x04}, true
+	case tea.KeyCtrlZ:
+		return []byte{0x1a}, true
+	case tea.KeyUp:
+		return []byte("\x1b[A"), true
+	case tea.KeyDown:
+		return []byte("\x1b[B"), true
+	case tea.KeyRight:
+		return []byte("\x1b[C"), true
+	case tea.KeyLeft:
+		return []byte("\x1b[D"), true
+	case tea.KeyHome:
+		return []byte("\x1b[H"), true
+	case tea.KeyEnd:
+		return []byte("\x1b[F"), true
+	case tea.KeyDelete:
+		return []byte("\x1b[3~"), true
+	default:
+		return nil, false
+	}
 }
 
 func formatDuration(d time.Duration) string {

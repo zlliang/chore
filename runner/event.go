@@ -1,7 +1,7 @@
 package runner
 
 import (
-	"io"
+	"os"
 	"time"
 )
 
@@ -14,13 +14,14 @@ type EventTaskStarted struct{ Task string }
 type EventTaskSkipped struct{ Task string }
 
 type EventTaskOutput struct {
-	Task string
-	Text string
+	Task    string
+	Text    string
+	Replace bool // Replace the last output line instead of appending.
 }
 
 type EventTaskInteractive struct {
-	Task  string
-	Stdin io.WriteCloser
+	Task string
+	PTY  *os.File
 }
 
 type EventTaskCompleted struct {

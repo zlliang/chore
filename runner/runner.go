@@ -141,8 +141,8 @@ func (r *Runner) execInteractive(ctx context.Context, taskName, cmdStr string) e
 	defer ptmx.Close()
 
 	r.emit(EventTaskInteractive{
-		Task:  taskName,
-		Stdin: ptmx,
+		Task: taskName,
+		PTY:  ptmx,
 	})
 
 	r.streamOutputInteractive(taskName, ptmx)
@@ -170,11 +170,31 @@ func (r *Runner) streamOutputInteractive(taskName string, reader io.Reader) {
 			lines := strings.Split(data, "\n")
 			partial = lines[len(lines)-1]
 			for _, line := range lines[:len(lines)-1] {
-				r.emit(EventTaskOutput{Task: taskName, Text: strings.TrimRight(line, "\r")})
+				text := strings.TrimRight(line, "\r")
+				text = stripCursorSequences(text)
+				// Handle embedded \r: use the content after the last \r.
+				if i := strings.LastIndex(text, "\r"); i >= 0 {
+					text = text[i+1:]
+				}
+				if text == "" {
+					// A bare \r\n after a partial finalizes that line;
+					// no new output needed.
+					partialEmitted = false
+					continue
+				}
+				r.emit(EventTaskOutput{Task: taskName, Text: text, Replace: partialEmitted})
+				partialEmitted = false
 			}
 			if partial != "" {
-				r.emit(EventTaskOutput{Task: taskName, Text: strings.TrimRight(partial, "\r")})
-				partialEmitted = true
+				text := strings.TrimRight(partial, "\r")
+				text = stripCursorSequences(text)
+				if i := strings.LastIndex(text, "\r"); i >= 0 {
+					text = text[i+1:]
+				}
+				if text != "" {
+					r.emit(EventTaskOutput{Task: taskName, Text: text, Replace: partialEmitted})
+					partialEmitted = true
+				}
 			}
 		}
 		if err != nil {
@@ -184,6 +204,40 @@ func (r *Runner) streamOutputInteractive(taskName string, reader io.Reader) {
 			break
 		}
 	}
+}
+
+// stripCursorSequences removes non-SGR ANSI escape sequences (cursor
+// movement, erase, etc.) while preserving color/style (SGR) sequences.
+func stripCursorSequences(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	i := 0
+	for i < len(s) {
+		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
+			// Find the final byte of the CSI sequence.
+			j := i + 2
+			for j < len(s) && s[j] >= 0x30 && s[j] <= 0x3f {
+				j++ // parameter bytes
+			}
+			for j < len(s) && s[j] >= 0x20 && s[j] <= 0x2f {
+				j++ // intermediate bytes
+			}
+			if j < len(s) {
+				final := s[j]
+				j++
+				if final == 'm' {
+					// SGR (color/style) — keep it.
+					b.WriteString(s[i:j])
+				}
+				// else: cursor/erase/etc. — drop it.
+				i = j
+				continue
+			}
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
 }
 
 func (r *Runner) execCommand(ctx context.Context, taskName, cmdStr string) error {
