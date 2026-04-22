@@ -26,10 +26,11 @@ var (
 var errNoConfig = errors.New("no config")
 
 var rootCmd = &cobra.Command{
-	Use:   "chore [task]",
-	Short: "A task runner for repetitive daily chores",
-	Args:  cobra.ExactArgs(1),
-	RunE:  runTask,
+	Use:     "chore [task]",
+	Short:   "A task runner for repetitive daily chores",
+	Version: buildinfo.Version,
+	Args:    cobra.ExactArgs(1),
+	RunE:    runTask,
 	SilenceUsage:  true,
 	SilenceErrors: true,
 }
