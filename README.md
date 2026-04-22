@@ -8,11 +8,19 @@ Chore runs tasks defined in a TOML config file and displays progress in a live-u
 
 ## Installation
 
+### Homebrew (recommended)
+
+```sh
+brew install zlliang/tap/chore
+```
+
+### Go
+
 ```sh
 go install github.com/zlliang/chore@latest
 ```
 
-Or build from source:
+### Build from source
 
 ```sh
 git clone https://github.com/zlliang/chore.git
