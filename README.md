@@ -4,6 +4,8 @@ Task runner for repetitive daily chores — software updates, auth renewals, env
 
 Chore runs tasks defined in a TOML config file and displays progress in a live-updating terminal UI with spinners, color-coded status, and folded output.
 
+[![Chore demo](./assets/chore-demo.gif)](https://asciinema.org/a/960336)
+
 ## Installation
 
 ```sh
