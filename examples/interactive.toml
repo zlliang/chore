@@ -1,0 +1,21 @@
+[[tasks]]
+name = "setup"
+description = "Interactive setup wizard"
+steps = ["ask-name", "ask-confirm", "finish"]
+
+[[tasks]]
+name = "ask-name"
+description = "Ask for your name"
+interactive = true
+run = ["printf 'What is your name? ' && read name && echo \"Hello, $name!\""]
+
+[[tasks]]
+name = "ask-confirm"
+description = "Confirm proceed"
+interactive = true
+run = ["printf 'Continue? [y/N] ' && read ans && [ \"$ans\" = 'y' ] && echo 'Proceeding...' || (echo 'Aborted'; exit 1)"]
+
+[[tasks]]
+name = "finish"
+description = "Finish setup"
+run = ["echo 'Setup complete!'"]

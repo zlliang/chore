@@ -1,0 +1,22 @@
+[[tasks]]
+name = "tools"
+description = "Update various tools"
+steps = ["exists", "missing-tool", "also-exists"]
+
+[[tasks]]
+name = "exists"
+description = "This tool exists (echo)"
+check = "echo"
+run = ["echo 'I exist and I ran!'"]
+
+[[tasks]]
+name = "missing-tool"
+description = "This tool does not exist"
+check = "nonexistent-binary-xyz-123"
+run = ["echo 'Should never see this'"]
+
+[[tasks]]
+name = "also-exists"
+description = "Another available tool"
+check = "echo"
+run = ["echo 'I also ran!'"]

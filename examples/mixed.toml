@@ -1,0 +1,29 @@
+[[tasks]]
+name = "deploy"
+description = "Build, test, and deploy"
+steps = ["lint", "test", "build", "upload"]
+
+[[tasks]]
+name = "lint"
+description = "Run linter"
+run = ["echo 'Linting...' && sleep 0.5 && echo 'No issues found'"]
+
+[[tasks]]
+name = "test"
+description = "Run test suite"
+run = [
+  "echo 'Running 12 tests...' && sleep 0.3",
+  "echo 'test_auth ........... ok' && sleep 0.2",
+  "echo 'test_database ....... ok' && sleep 0.2",
+  "echo 'test_api ............ FAILED' && sleep 0.1 && exit 1",
+]
+
+[[tasks]]
+name = "build"
+description = "Compile project"
+run = ["echo 'Compiling...' && sleep 1 && echo 'Build complete'"]
+
+[[tasks]]
+name = "upload"
+description = "Upload artifacts"
+run = ["echo 'Uploading...' && sleep 0.5 && echo 'Done'"]

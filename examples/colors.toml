@@ -1,0 +1,21 @@
+[[tasks]]
+name = "colorful"
+description = "Commands with colorized output"
+steps = ["ansi-colors", "ls-colors", "grep-colors"]
+
+[[tasks]]
+name = "ansi-colors"
+description = "ANSI color output"
+run = [
+  "printf '\\033[31mRed\\033[0m \\033[32mGreen\\033[0m \\033[33mYellow\\033[0m \\033[34mBlue\\033[0m \\033[35mMagenta\\033[0m \\033[36mCyan\\033[0m\\n'",
+]
+
+[[tasks]]
+name = "ls-colors"
+description = "Colorized ls output"
+run = ["ls -G /tmp"]
+
+[[tasks]]
+name = "grep-colors"
+description = "Colorized grep output"
+run = ["echo 'hello world\nfoo bar\nhello again' | grep --color=always hello"]

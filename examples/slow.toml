@@ -1,0 +1,23 @@
+[[tasks]]
+name = "pipeline"
+description = "Long-running pipeline with streaming output"
+steps = ["download", "process", "report"]
+
+[[tasks]]
+name = "download"
+description = "Download data files"
+run = [
+  "for i in 1 2 3 4 5; do echo \"Downloading file $i/5...\"; sleep 0.5; done; echo 'All files downloaded'",
+]
+
+[[tasks]]
+name = "process"
+description = "Process data"
+run = [
+  "echo 'Processing...' && for pct in 10 20 30 40 50 60 70 80 90 100; do printf '\\rProgress: %d%%' $pct; sleep 0.3; done; echo; echo 'Processing complete'",
+]
+
+[[tasks]]
+name = "report"
+description = "Generate report"
+run = ["echo 'Generating report...' && sleep 1 && echo 'Report saved to /tmp/report.txt'"]

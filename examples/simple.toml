@@ -1,0 +1,14 @@
+[[tasks]]
+name = "greet"
+description = "Print greetings"
+steps = ["hello", "goodbye"]
+
+[[tasks]]
+name = "hello"
+description = "Say hello"
+run = ["echo 'Hello, world!'"]
+
+[[tasks]]
+name = "goodbye"
+description = "Say goodbye"
+run = ["echo 'Goodbye!'"]
