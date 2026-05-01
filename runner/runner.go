@@ -1,7 +1,6 @@
 package runner
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"io"
@@ -145,7 +144,7 @@ func (r *Runner) execInteractive(ctx context.Context, taskName, cmdStr string) e
 		PTY:  ptmx,
 	})
 
-	r.streamOutputInteractive(taskName, ptmx)
+	r.streamOutput(taskName, ptmx)
 
 	if err := cmd.Wait(); err != nil {
 		return err
@@ -153,7 +152,7 @@ func (r *Runner) execInteractive(ctx context.Context, taskName, cmdStr string) e
 	return nil
 }
 
-func (r *Runner) streamOutputInteractive(taskName string, reader io.Reader) {
+func (r *Runner) streamOutput(taskName string, reader io.Reader) {
 	buf := make([]byte, 256)
 	var partial string
 	var partialEmitted bool
@@ -161,83 +160,123 @@ func (r *Runner) streamOutputInteractive(taskName string, reader io.Reader) {
 		n, err := reader.Read(buf)
 		if n > 0 {
 			data := string(buf[:n])
-			if !partialEmitted {
-				data = partial + data
-			}
-			partial = ""
-			partialEmitted = false
-
-			lines := strings.Split(data, "\n")
-			partial = lines[len(lines)-1]
-			for _, line := range lines[:len(lines)-1] {
-				text := strings.TrimRight(line, "\r")
-				text = stripCursorSequences(text)
-				// Handle embedded \r: use the content after the last \r.
-				if i := strings.LastIndex(text, "\r"); i >= 0 {
-					text = text[i+1:]
-				}
-				if text == "" {
-					// A bare \r\n after a partial finalizes that line;
-					// no new output needed.
-					partialEmitted = false
-					continue
-				}
-				r.emit(EventTaskOutput{Task: taskName, Text: text, Replace: partialEmitted})
-				partialEmitted = false
-			}
-			if partial != "" {
-				text := strings.TrimRight(partial, "\r")
-				text = stripCursorSequences(text)
-				if i := strings.LastIndex(text, "\r"); i >= 0 {
-					text = text[i+1:]
-				}
-				if text != "" {
-					r.emit(EventTaskOutput{Task: taskName, Text: text, Replace: partialEmitted})
-					partialEmitted = true
-				}
-			}
+			partial, partialEmitted = r.streamOutputChunk(taskName, partial+data, partialEmitted)
 		}
 		if err != nil {
 			if partial != "" && !partialEmitted {
-				r.emit(EventTaskOutput{Task: taskName, Text: partial})
+				r.emitOutput(taskName, partial, false)
 			}
 			break
 		}
 	}
 }
 
-// stripCursorSequences removes non-SGR ANSI escape sequences (cursor
-// movement, erase, etc.) while preserving color/style (SGR) sequences.
-func stripCursorSequences(s string) string {
+func (r *Runner) streamOutputChunk(taskName, data string, partialEmitted bool) (string, bool) {
+	partial := data
+	for {
+		i := strings.IndexAny(partial, "\r\n")
+		if i < 0 {
+			break
+		}
+
+		line := partial[:i]
+		sep := partial[i]
+		partial = partial[i+1:]
+
+		if line != "" {
+			r.emitOutput(taskName, line, partialEmitted)
+		}
+		partialEmitted = sep == '\r' && line != ""
+
+		if sep == '\n' {
+			partialEmitted = false
+		}
+	}
+
+	if partial != "" {
+		r.emitOutput(taskName, partial, partialEmitted)
+		partialEmitted = true
+	}
+
+	return partial, partialEmitted
+}
+
+func (r *Runner) emitOutput(taskName, text string, replace bool) {
+	text = stripTerminalControls(text)
+	if text == "" {
+		return
+	}
+	r.emit(EventTaskOutput{Task: taskName, Text: text, Replace: replace})
+}
+
+// stripTerminalControls removes terminal control sequences that would interfere
+// with Chore's own TUI while preserving SGR color/style sequences.
+func stripTerminalControls(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	i := 0
 	for i < len(s) {
-		if s[i] == '\x1b' && i+1 < len(s) && s[i+1] == '[' {
-			// Find the final byte of the CSI sequence.
-			j := i + 2
-			for j < len(s) && s[j] >= 0x30 && s[j] <= 0x3f {
-				j++ // parameter bytes
-			}
-			for j < len(s) && s[j] >= 0x20 && s[j] <= 0x2f {
-				j++ // intermediate bytes
-			}
-			if j < len(s) {
-				final := s[j]
-				j++
-				if final == 'm' {
-					// SGR (color/style) — keep it.
-					b.WriteString(s[i:j])
+		if s[i] == '\x1b' && i+1 < len(s) {
+			switch s[i+1] {
+			case '[':
+				// CSI sequence.
+				j := i + 2
+				for j < len(s) && s[j] >= 0x30 && s[j] <= 0x3f {
+					j++ // parameter bytes
 				}
-				// else: cursor/erase/etc. — drop it.
+				for j < len(s) && s[j] >= 0x20 && s[j] <= 0x2f {
+					j++ // intermediate bytes
+				}
+				if j < len(s) {
+					final := s[j]
+					j++
+					if final == 'm' {
+						b.WriteString(s[i:j])
+					}
+					i = j
+					continue
+				}
+				return b.String()
+
+			case ']':
+				// OSC sequence, terminated by BEL or ST.
+				j := i + 2
+				for j < len(s) {
+					if s[j] == '\a' {
+						j++
+						break
+					}
+					if s[j] == '\x1b' && j+1 < len(s) && s[j+1] == '\\' {
+						j += 2
+						break
+					}
+					j++
+				}
 				i = j
+				continue
+
+			default:
+				// Other escape sequences such as ESC 7, ESC 8, ESC >, ESC <.
+				i += 2
 				continue
 			}
 		}
+
+		if s[i] < 0x20 && s[i] != '\t' {
+			i++
+			continue
+		}
+
 		b.WriteByte(s[i])
 		i++
 	}
 	return b.String()
+}
+
+// stripCursorSequences is kept as a small compatibility wrapper for tests and
+// callers inside this package that need the old name.
+func stripCursorSequences(s string) string {
+	return stripTerminalControls(s)
 }
 
 func (r *Runner) execCommand(ctx context.Context, taskName, cmdStr string) error {
@@ -259,13 +298,4 @@ func (r *Runner) execCommand(ctx context.Context, taskName, cmdStr string) error
 		return err
 	}
 	return nil
-}
-
-func (r *Runner) streamOutput(taskName string, reader io.Reader) {
-	scanner := bufio.NewScanner(reader)
-	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
-	for scanner.Scan() {
-		line := strings.TrimRight(scanner.Text(), "\r")
-		r.emit(EventTaskOutput{Task: taskName, Text: line})
-	}
 }

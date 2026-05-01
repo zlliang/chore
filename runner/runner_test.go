@@ -257,6 +257,39 @@ func TestCommandOutputNoTrailingCR(t *testing.T) {
 	}
 }
 
+func TestCommandOutputCarriageReturnReplacesLine(t *testing.T) {
+	r := New(makePlan())
+
+	r.streamOutputChunk("progress", "Processing...\r\n\rProgress: 10%\rProgress: 100%\r\nDone\n", false)
+
+	got := collectOutputEvents(r)
+	want := []EventTaskOutput{
+		{Task: "progress", Text: "Processing..."},
+		{Task: "progress", Text: "Progress: 10%"},
+		{Task: "progress", Text: "Progress: 100%", Replace: true},
+		{Task: "progress", Text: "Done"},
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("expected %d output events, got %d: %#v", len(want), len(got), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("event[%d]: want %#v, got %#v", i, want[i], got[i])
+		}
+	}
+}
+
+func TestStripTerminalControlsPreservesOnlySGR(t *testing.T) {
+	input := "\x1b[31mred\x1b[0m\x1b[1AAlready\x1b[0K\x1b]0;title\a\x1b7saved\x1b8"
+	got := stripTerminalControls(input)
+	want := "\x1b[31mred\x1b[0mAlreadysaved"
+
+	if got != want {
+		t.Fatalf("stripTerminalControls() = %q, want %q", got, want)
+	}
+}
+
 func TestInteractivePreservesANSIColors(t *testing.T) {
 	plan := makePlan(config.Task{
 		Name:        "icolors",
@@ -295,6 +328,20 @@ func TestInteractiveOutputNoTrailingCR(t *testing.T) {
 			if strings.HasSuffix(o.Text, "\r") {
 				t.Errorf("interactive output has trailing \\r: %q", o.Text)
 			}
+		}
+	}
+}
+
+func collectOutputEvents(r *Runner) []EventTaskOutput {
+	var outputs []EventTaskOutput
+	for {
+		select {
+		case e := <-r.events:
+			if o, ok := e.(EventTaskOutput); ok {
+				outputs = append(outputs, o)
+			}
+		default:
+			return outputs
 		}
 	}
 }
