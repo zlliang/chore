@@ -28,7 +28,7 @@ changelog:
     - title: Features
       regexp: '^.*?feat'
       order: 0
-    - title: Bug fixes
+    - title: Bug Fixes
       regexp: '^.*?fix'
       order: 1
     - title: Others
