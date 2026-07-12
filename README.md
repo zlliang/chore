@@ -1,5 +1,8 @@
 # Chore
 
+> [!WARNING]
+> This project was an experiment from around April 2026 and is no longer actively maintained.
+
 Task runner for repetitive daily chores — software updates, auth renewals, environment setup, and other routines you run often enough to automate but not often enough to remember.
 
 Chore runs tasks defined in a TOML config file and displays progress in a live-updating terminal UI with spinners, color-coded status, and folded output.
